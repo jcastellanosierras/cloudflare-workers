@@ -9,7 +9,6 @@
  */
 
 import { z } from 'zod'
-import { Client } from 'typesense'
 
 export interface Env {
 	TYPESENSE_PORT: 443
@@ -200,23 +199,23 @@ const insertEnglishProducts = async (
 	await insertProducts(englishProductsAlias, products, serverConfig)
 }
 
-const validateProductSchema = (validatedData: z.infer<typeof requestSchema>) => {
-	if (validatedData.languages.includes('en_US') && !validatedData.en_US) {
-		throw new Error(`El campo en_US es obligatorio`)
-	}
+// const validateProductSchema = (validatedData: z.infer<typeof requestSchema>) => {
+// 	if (validatedData.languages.includes('en_US') && !validatedData.en_US) {
+// 		throw new Error(`El campo en_US es obligatorio`)
+// 	}
 
-	if (!validatedData.languages.includes('en_US') && validatedData.en_US) {
-		throw new Error(`El campo en_US no debería existir`)
-	}
+// 	if (!validatedData.languages.includes('en_US') && validatedData.en_US) {
+// 		throw new Error(`El campo en_US no debería existir`)
+// 	}
 
-	if (validatedData.languages.includes('es_ES') && !validatedData.es_ES) {
-		throw new Error(`El campo es_ES es obligatorio`)
-	}
+// 	if (validatedData.languages.includes('es_ES') && !validatedData.es_ES) {
+// 		throw new Error(`El campo es_ES es obligatorio`)
+// 	}
 
-	if (!validatedData.languages.includes('es_ES') && validatedData.es_ES) {
-		throw new Error(`El campo es_ES no debería existir`)
-	}
-}
+// 	if (!validatedData.languages.includes('es_ES') && validatedData.es_ES) {
+// 		throw new Error(`El campo es_ES no debería existir`)
+// 	}
+// }
 
 const parseProductsToJSONL = (products: z.infer<typeof productSchema>[]) => {
 	let productsStr = ""
@@ -235,43 +234,43 @@ const parseProductsToJSONL = (products: z.infer<typeof productSchema>[]) => {
 }
 
 export default {
-	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		// Lo validamos
-		let validatedData
-		try {
-			// Obtenemos los datos de la query
-			const data = await request.json()
-			validatedData = requestSchema.parse(data)
-		} catch (e) {
-			const error = e as Error
-			return new Response(`No se ha podido procesar el producto: ${error.message}`, {
-				status: 400,
-			})
-		}
+	// async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+	// 	// Lo validamos
+	// 	let validatedData
+	// 	try {
+	// 		// Obtenemos los datos de la query
+	// 		const data = await request.json()
+	// 		validatedData = requestSchema.parse(data)
+	// 	} catch (e) {
+	// 		const error = e as Error
+	// 		return new Response(`No se ha podido procesar el producto: ${error.message}`, {
+	// 			status: 400,
+	// 		})
+	// 	}
 
-		// Si ha pasado la validación
-		// Comprobamos que el campo languages concuerda con los campos recibidos
-		try {
-			validateProductSchema(validatedData)
-		} catch (e) {
-			const error = e as Error
-			return new Response(`No se ha podido procesar el producto: ${error.message}`, {
-				status: 400,
-			})
-		}
+	// 	// Si ha pasado la validación
+	// 	// Comprobamos que el campo languages concuerda con los campos recibidos
+	// 	try {
+	// 		validateProductSchema(validatedData)
+	// 	} catch (e) {
+	// 		const error = e as Error
+	// 		return new Response(`No se ha podido procesar el producto: ${error.message}`, {
+	// 			status: 400,
+	// 		})
+	// 	}
 
-		// Si se ha llegado hasta aquí enviamos a la cola
-		try {
-			await env.MY_FIRST_QUEUE.send(validatedData)
-		} catch (e) {
-			const error = e as Error
-			return new Response(`No se ha podido encolar el producto: ${error.message}`, {
-				status: 500,
-			})
-		}
+	// 	// Si se ha llegado hasta aquí enviamos a la cola
+	// 	try {
+	// 		await env.MY_FIRST_QUEUE.send(validatedData)
+	// 	} catch (e) {
+	// 		const error = e as Error
+	// 		return new Response(`No se ha podido encolar el producto: ${error.message}`, {
+	// 			status: 500,
+	// 		})
+	// 	}
 
-		return new Response('Producto encolado con éxito')
-	},
+	// 	return new Response('Producto encolado con éxito')
+	// },
 	async queue(batch: MessageBatch<any>, env: Env): Promise<void> {
 		// Obtenemos todos los mensajes
 		const messages = batch.messages
