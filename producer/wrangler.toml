@@ -32,10 +32,10 @@ queue = "my-first-queue"
 
 # Bind a Queue consumer. Queue Consumers can retrieve tasks scheduled by Producers to act on them.
 # Docs: https://developers.cloudflare.com/queues/get-started
-# [[queues.consumers]]
-# queue = "my-first-queue"
-# max_batch_size = 10
-# max_batch_timeout = 5
+[[queues.consumers]]
+queue = "my-first-queue"
+max_batch_size = 10
+max_batch_timeout = 5
 
 # Bind another Worker service. Use this binding to call another Worker without network overhead.
 # Docs: https://developers.cloudflare.com/workers/platform/services

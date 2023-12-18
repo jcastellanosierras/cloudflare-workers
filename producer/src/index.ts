@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod'
+import { consumer } from './consumer'
 
 export interface Env {
 	TYPESENSE_PORT: 443
@@ -31,7 +32,10 @@ export interface Env {
 }
 
 const productSchema = z.object({
-	collection_alias: z.string(),
+	collection_alias: z.string()
+})
+
+const insertOrUpdateProductSchema = productSchema.extend({
 	odoo_id: z.number(),
 	name: z.string(),
 	display_name: z.string(),
@@ -71,135 +75,34 @@ const productSchema = z.object({
 	compatible_machines: z.array(z.string()),
 })
 
-const requestSchema = z.object({
-	backend_id: z.number(),
-	languages: z.array(z.enum(['en_US', 'es_ES'])),
-	en_US: productSchema.optional(),
-	es_ES: productSchema.optional(),
+const deleteProductSchema = productSchema.extend({
+	odoo_id: z.number()
 })
 
-// const requestAliasSchema = z.object({
-// 	collection_name: z.string(),
-// 	name: z.string()
-// })
+const requestSchema = z.discriminatedUnion('action', [
+	z.object({
+		action: z.enum(['create', 'update']),
+		backend_id: z.number(),
+		languages: z.array(z.enum(['en_US', 'es_ES'])),
+		en_US: insertOrUpdateProductSchema.optional(),
+		es_ES: insertOrUpdateProductSchema.optional(),
+	}),
+	z.object({
+		action: z.literal('delete'),
+		backend_id: z.number(),
+		languages: z.array(z.enum(['en_US', 'es_ES'])),
+		en_US: deleteProductSchema.optional().refine((data) => {
+			console.log(data?.odoo_id)
+			return true
+		}),
+		es_ES: deleteProductSchema.optional().refine((data) => {
+			console.log(data?.odoo_id)
+			return true
+		}),
+	})
+])
 
-// const errorRequestAliasSchema = z.object({
-// 	message: z.string()
-// })
-
-// const requestInserProductsSchema = z.array(
-// 	z.object({
-// 		success: z.boolean()
-// 	})
-// )
-
-// const getCollectionFromAlias = async (
-// 	alias: string,
-// 	serverConfig: {
-// 		apiKey: string
-// 		host: string
-// 	}
-// ) => {
-// 	let res
-// 	try {
-// 		res = await fetch(`https://${serverConfig.host}/aliases/${alias}`, {
-// 			method: 'GET',
-// 			headers: {
-// 				'X-TYPESENSE-API-KEY': serverConfig.apiKey,
-// 			},
-// 		})
-// 	} catch (e) {
-// 		const error = e as Error
-// 		throw new Error(`No se ha podido obtener la colección: ${error.message}`)
-// 	}
-
-// 	if (!res.ok) {
-// 		throw new Error(`No se ha podido obtener la colección: ${res.statusText}`)
-// 	}
-
-// 	const data = await res.json()
-
-// 	const validatedData = requestAliasSchema.safeParse(data)
-// 	if (validatedData.success) {
-// 		return validatedData.data.collection_name
-// 	}
-
-// 	const validatedErrorData = errorRequestAliasSchema.safeParse(data)
-// 	if (validatedErrorData.success) {
-// 		throw new Error(`No exista una colección para el alias: ${alias}}`)
-// 	}
-// }
-
-// const insertProducts = async (
-// 	alias: string,
-// 	products: string,
-// 	serverConfig: {
-// 		apiKey: string
-// 		host: string
-// 	}
-// ) => {
-// 	let collection
-// 	try {
-// 		collection = await getCollectionFromAlias(alias, serverConfig)
-// 	} catch (e) {
-// 		const error = e as Error
-// 		throw new Error(error.message)
-// 	}
-
-// 	try {
-// 		const res = await fetch(`https://${serverConfig.host}/collections/${collection}/documents/import?action=create`, {
-// 			method: 'POST',
-// 			headers: {
-// 				'Content-Type': 'text/plain',
-// 				'X-TYPESENSE-API-KEY': serverConfig.apiKey,
-// 			},
-// 			body: products
-// 		})
-		
-// 		if (!res.ok) {
-// 			throw new Error(`No se ha podido insertar el producto: ${res.statusText}`)
-// 		}
-		
-// 		const data = await res.text()
-// 		const formattedData = JSON.parse('['.concat(data).concat(']').replace(/\n/g, ', '))
-
-// 		const validatedRes = requestInserProductsSchema.safeParse(formattedData)
-// 		if (!validatedRes.success) {
-// 			throw new Error(`Respuesta inválida: ${res.statusText}`)
-// 		}
-
-// 		if (validatedRes.data.includes({ success: false })) {
-// 			throw new Error(`No se ha podido insertar el producto: ${res.statusText}`)
-// 		}
-// 	} catch (e) {
-// 		const error = e as Error
-// 		throw new Error(`No se ha podido obtener la colección: ${error.message}`)
-// 	}
-// }
-
-// const insertSpanishProducts = async (
-// 	products: string,
-// 	serverConfig: {
-// 		apiKey: string
-// 		host: string
-// 	}
-// ) => {
-// 	const spanishProductsAlias = 'spanish-products-alias'
-// 	await insertProducts(spanishProductsAlias, products, serverConfig)
-// }
-
-// const insertEnglishProducts = async (
-// 	products: string,
-// 	serverConfig: {
-// 		apiKey: string
-// 		host: string
-// 	}
-// ) => {
-// 	const englishProductsAlias = 'english-products-alias'
-// 	await insertProducts(englishProductsAlias, products, serverConfig)
-// }
-
-const validateProductSchema = (validatedData: z.infer<typeof requestSchema>) => {
+const validateinsertOrUpdateProductSchema = (validatedData: z.infer<typeof requestSchema>) => {
 	if (validatedData.languages.includes('en_US') && !validatedData.en_US) {
 		throw new Error(`El campo en_US es obligatorio`)
 	}
@@ -217,22 +120,6 @@ const validateProductSchema = (validatedData: z.infer<typeof requestSchema>) => 
 	}
 }
 
-// const parseProductsToJSONL = (products: z.infer<typeof productSchema>[]) => {
-// 	let productsStr = ""
-// 	let cont = 0
-// 	for (const product of products) {
-// 		if (cont !== 0) {
-// 			productsStr += "\n"
-// 		}
-
-// 		productsStr += JSON.stringify(product)
-
-// 		cont++
-// 	}
-
-// 	return productsStr
-// }
-
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		// Lo validamos
@@ -248,70 +135,54 @@ export default {
 			})
 		}
 
-		// Si ha pasado la validación
-		// Comprobamos que el campo languages concuerda con los campos recibidos
-		try {
-			validateProductSchema(validatedData)
-		} catch (e) {
-			const error = e as Error
-			return new Response(`No se ha podido procesar el producto: ${error.message}`, {
-				status: 400,
-			})
-		}
+		// Ahora comprobamos la acción
+		switch (validatedData.action) {
+			case 'create' || 'update':
+				return await insertOrUpdateProduct(validatedData, env)
 
-		// Si se ha llegado hasta aquí enviamos a la cola
-		try {
-			await env.MY_FIRST_QUEUE.send(validatedData)
-		} catch (e) {
-			const error = e as Error
-			return new Response(`No se ha podido encolar el producto: ${error.message}`, {
-				status: 500,
-			})
-		}
+			case 'delete':
+				return await deleteProduct(validatedData, env)
 
-		return new Response('Producto encolado con éxito')
+			default:
+				return new Response(`No se ha podido procesar el producto: Acción desconocida`, {
+					status: 400,
+				})
+		}
 	},
-	// async queue(batch: MessageBatch<any>, env: Env): Promise<void> {
-	// 	// Obtenemos todos los mensajes
-	// 	const messages = batch.messages
-	// 	// Sacamos todos los productos si cumplen con el esquema
-	// 	const spanishProducts = []
-	// 	const englishProducts = []
-	// 	try {
-	// 		for (const message of messages) {
-	// 			const product = requestSchema.parse(message.body)
-
-	// 			if (product.languages.includes('en_US')) {
-	// 				const englishProduct = productSchema.parse(product.en_US)
-	// 				englishProducts.push(englishProduct)
-	// 			}
-				
-	// 			if (product.languages.includes('es_ES')) {
-	// 				const spanishProduct = productSchema.parse(product.es_ES)
-	// 				spanishProducts.push(spanishProduct)
-	// 			}
-	// 		}
-			
-	// 		// Insertamos los productos en typesense
-	// 		if (spanishProducts.length > 0) {
-	// 			const spanishProductsStr = parseProductsToJSONL(spanishProducts)
-	// 			await insertSpanishProducts(spanishProductsStr, {
-	// 				apiKey: env.TYPESENSE_ADMIN_KEY,
-	// 				host: env.TYPESENSE_HOST
-	// 			})
-	// 		}
-	
-	// 		if (englishProducts.length > 0) {
-	// 			const englishProductsStr = parseProductsToJSONL(englishProducts)
-	// 			await insertEnglishProducts(englishProductsStr, {
-	// 				apiKey: env.TYPESENSE_ADMIN_KEY,
-	// 				host: env.TYPESENSE_HOST
-	// 			})
-	// 		}
-	// 	} catch (e) {
-	// 		const error = e as Error
-	// 		console.error(`No se ha podido procesar el producto: ${error.message}`)
-	// 	}
-
-	// },
+	async queue(batch: MessageBatch<any>, env: Env): Promise<void> {
+		await consumer(batch, env)
+	}
 }
+
+const insertOrUpdateProduct = async (validatedData: z.infer<typeof requestSchema>, env: Env) => {
+	// Comprobamos que el campo languages concuerda con los campos recibidos
+	try {
+		validateinsertOrUpdateProductSchema(validatedData)
+	} catch (e) {
+		const error = e as Error
+		return new Response(`No se ha podido procesar el producto: ${error.message}`, {
+			status: 400,
+		})
+	}
+
+	return await sendToQueue(validatedData, env)
+}
+
+const deleteProduct = async (validatedData: z.infer<typeof requestSchema>, env: Env) => {
+	return await sendToQueue(validatedData, env)
+}
+
+const sendToQueue = async (validatedData: z.infer<typeof requestSchema>, env: Env) => {
+	try {
+		await env.MY_FIRST_QUEUE.send(validatedData)
+	} catch (e) {
+		const error = e as Error
+		return new Response(`No se ha podido encolar el producto: ${error.message}`, {
+			status: 500,
+		})
+	}
+
+	return new Response('Producto encolado con éxito')
+}
+
+

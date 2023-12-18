@@ -117,7 +117,7 @@ const responseInserProductsSchema = z.array(
 )
 
 const responseDeleteProductsSchema = z.object({
-	num_delete: z.number()
+	num_deleted: z.number()
 })
 
 const getCollectionFromAlias = async (
@@ -260,20 +260,19 @@ const deleteProducts = async (
 
 	for (const product of products) {
 		try {
+      console.log(product)
 			const res = await fetch(`https://${serverConfig.host}/collections/${collection}/documents?filter_by=odoo_id:=${product.odoo_id}`, {
 				method: 'DELETE',
 				headers: {
-					'Content-Type': 'text/plain',
 					'X-TYPESENSE-API-KEY': serverConfig.apiKey,
-				},
-				body: JSON.stringify(product)
+				}
 			})
 
 			if (!res.ok) {
 				throw new Error(`No se ha podido insertar el producto: ${res.statusText}`)
 			}
 
-			const data = await res.text()
+			const data = await res.json()
 
 			const validatedRes = responseDeleteProductsSchema.safeParse(data)
 			if (!validatedRes.success) {
@@ -308,88 +307,85 @@ const deleteEnglishProducts = async (
 	await deleteProducts(englishProductsAlias, products, serverConfig)
 }
 
-export default {
-	async queue(batch: MessageBatch<any>, env: Env): Promise<void> {
-		console.log('hola', batch.messages)
-		// Obtenemos todos los mensajes
-		const messages = batch.messages
-		// Sacamos todos los productos si cumplen con el esquema
-		const spanishProductsToInsertOrUpdate = []
-		const spanishProductsToDelete = []
-		const englishProductsToInsertOrUpdate = []
-		const englishProductsToDelete = []
-		try {
-			for (const message of messages) {
-				const product = requestSchema.parse(message.body)
-				console.log('hola')
-				if (
-					product.action === 'create' ||
-					product.action === 'update'	
-				) {
-					if (product.languages.includes('en_US')) {
-						const englishProduct = insertOrUpdateProductSchema.parse(product.en_US)
-						englishProductsToInsertOrUpdate.push(englishProduct)
-					}
-					
-					if (product.languages.includes('es_ES')) {
-						const spanishProduct = insertOrUpdateProductSchema.parse(product.es_ES)
-						spanishProductsToInsertOrUpdate.push(spanishProduct)
-					}
-				} else if (product.action === 'delete') {
-					if (product.languages.includes('en_US')) {
-						const englishProduct = deleteProductSchema.parse(product.en_US)
-						englishProductsToDelete.push(englishProduct)
-					}
-					
-					if (product.languages.includes('es_ES')) {
-						const spanishProduct = deleteProductSchema.parse(product.es_ES)
-						spanishProductsToDelete.push(spanishProduct)
-					}
-				}
-			}
+export async function consumer(batch: MessageBatch<any>, env: Env): Promise<void> {
+  // Obtenemos todos los mensajes
+  const messages = batch.messages
+  // Sacamos todos los productos si cumplen con el esquema
+  const spanishProductsToInsertOrUpdate = []
+  const spanishProductsToDelete = []
+  const englishProductsToInsertOrUpdate = []
+  const englishProductsToDelete = []
+  try {
+    for (const message of messages) {
+      const product = requestSchema.parse(message.body)
+      console.log('hola')
+      if (
+        product.action === 'create' ||
+        product.action === 'update'	
+      ) {
+        if (product.languages.includes('en_US')) {
+          const englishProduct = insertOrUpdateProductSchema.parse(product.en_US)
+          englishProductsToInsertOrUpdate.push(englishProduct)
+        }
+        
+        if (product.languages.includes('es_ES')) {
+          const spanishProduct = insertOrUpdateProductSchema.parse(product.es_ES)
+          spanishProductsToInsertOrUpdate.push(spanishProduct)
+        }
+      } else if (product.action === 'delete') {
+        if (product.languages.includes('en_US')) {
+          const englishProduct = deleteProductSchema.parse(product.en_US)
+          englishProductsToDelete.push(englishProduct)
+        }
+        
+        if (product.languages.includes('es_ES')) {
+          const spanishProduct = deleteProductSchema.parse(product.es_ES)
+          spanishProductsToDelete.push(spanishProduct)
+        }
+      }
+    }
 
-			console.log({
-				spanishProductsToInsertOrUpdate,
-				spanishProductsToDelete,
-				englishProductsToInsertOrUpdate,
-				englishProductsToDelete
-			})
-			
-			// Insertamos los productos en typesense
-			if (spanishProductsToInsertOrUpdate.length > 0) {
-				const spanishProductsStr = parseProductsToJSONL(spanishProductsToInsertOrUpdate)
-				await insertSpanishProducts(spanishProductsStr, {
-					apiKey: env.TYPESENSE_ADMIN_KEY,
-					host: env.TYPESENSE_HOST
-				})
-			}
-	
-			if (englishProductsToInsertOrUpdate.length > 0) {
-				const englishProductsStr = parseProductsToJSONL(englishProductsToInsertOrUpdate)
-				await insertEnglishProducts(englishProductsStr, {
-					apiKey: env.TYPESENSE_ADMIN_KEY,
-					host: env.TYPESENSE_HOST
-				})
-			}
+    console.log({
+      spanishProductsToInsertOrUpdate,
+      spanishProductsToDelete,
+      englishProductsToInsertOrUpdate,
+      englishProductsToDelete
+    })
+    
+    // Insertamos los productos en typesense
+    if (spanishProductsToInsertOrUpdate.length > 0) {
+      const spanishProductsStr = parseProductsToJSONL(spanishProductsToInsertOrUpdate)
+      await insertSpanishProducts(spanishProductsStr, {
+        apiKey: env.TYPESENSE_ADMIN_KEY,
+        host: env.TYPESENSE_HOST
+      })
+    }
 
-			// O los borramos
-			if (spanishProductsToDelete.length > 0) {
-				await deleteSpanishProducts(spanishProductsToDelete, {
-					apiKey: env.TYPESENSE_ADMIN_KEY,
-					host: env.TYPESENSE_HOST
-				})
-			}
+    if (englishProductsToInsertOrUpdate.length > 0) {
+      const englishProductsStr = parseProductsToJSONL(englishProductsToInsertOrUpdate)
+      await insertEnglishProducts(englishProductsStr, {
+        apiKey: env.TYPESENSE_ADMIN_KEY,
+        host: env.TYPESENSE_HOST
+      })
+    }
 
-			if (englishProductsToDelete.length > 0) {
-				await deleteEnglishProducts(englishProductsToDelete, {
-					apiKey: env.TYPESENSE_ADMIN_KEY,
-					host: env.TYPESENSE_HOST
-				})
-			}
-		} catch (e) {
-			const error = e as Error
-			console.error(`No se ha podido procesar el producto: ${error.message}`)
-		}
+    // O los borramos
+    if (spanishProductsToDelete.length > 0) {
+      await deleteSpanishProducts(spanishProductsToDelete, {
+        apiKey: env.TYPESENSE_ADMIN_KEY,
+        host: env.TYPESENSE_HOST
+      })
+    }
 
-	},
+    if (englishProductsToDelete.length > 0) {
+      await deleteEnglishProducts(englishProductsToDelete, {
+        apiKey: env.TYPESENSE_ADMIN_KEY,
+        host: env.TYPESENSE_HOST
+      })
+    }
+  } catch (e) {
+    const error = e as Error
+    console.error(`No se ha podido procesar el producto: ${error.message}`)
+  }
+
 }
